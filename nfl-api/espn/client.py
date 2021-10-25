@@ -234,6 +234,7 @@ class NFLClient:
         odds_list = []
         for odds in odds_makers:
             record = OrderedDict(
+                gameId=game_id,
                 providerId=odds["provider"]["id"],
                 providerName=odds["provider"]["name"],
                 overUnder=odds.get("overUnder"),
