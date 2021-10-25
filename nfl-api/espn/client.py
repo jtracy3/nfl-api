@@ -20,6 +20,7 @@ class NFLClient:
     # Core endpoints -------------------------------
     # season types -> 1: preseason 2: reg season 3: postseason
     WEEK_ENDPOINT = "/{}/sports/football/leagues/nfl/seasons/{}/types/2/weeks/{}"
+    ODDS_ENDPOINT = "/{}/sports/football/leagues/nfl/events/{}/competitions/{}/odds"
 
     # Site endpoints ------------------------------
     SCOREBOARD_ENDPOINT = "/apis/site/{}/sports/football/nfl/scoreboard"
@@ -33,13 +34,6 @@ class NFLClient:
 
     def __init__(self) -> None:
         self.session = requests.Session()
-
-    def _get_week_start_end(self, season: int, week_number: int):
-        url = self.API_ESPN_CORE + self.WEEK_ENDPOINT.format(self.CORE_VERSION, season, week_number)
-        r = self.session.get(url).json()
-        start = dt.datetime.strptime(r["startDate"], self.DATE_FORMAT).strftime("%Y%m%d")
-        end = dt.datetime.strptime(r["endDate"], self.DATE_FORMAT).strftime("%Y%m%d")
-        return start, end
 
     @staticmethod
     def _check_two_city_team(team):
@@ -57,6 +51,32 @@ class NFLClient:
     def _match_team_abbr(abbr_input, abbr_check):
         abbr_input_l, abbr_check_l = abbr_input.lower(), abbr_check.lower()
         return abbr_input_l in re.split('\W+', abbr_check_l)
+
+    @staticmethod
+    def _get_home_away(response: dict) -> dict:
+        home_away = {}
+        for team in response:
+            home_away.update({
+                team["homeAway"]: {
+                    "id": team["id"],
+                    "score": team["score"]["value"]
+                }
+            })
+        return home_away
+            
+
+    @staticmethod
+    def _convert_datetime_format(
+        str_date: str, from_format: str, to_format: str
+        ):
+        return dt.datetime.strptime(str_date, from_format).strftime(to_format)
+
+    def _get_week_start_end(self, season: int, week_number: int):
+        url = self.API_ESPN_CORE + self.WEEK_ENDPOINT.format(self.CORE_VERSION, season, week_number)
+        r = self.session.get(url).json()
+        start = dt.datetime.strptime(r["startDate"], self.DATE_FORMAT).strftime("%Y%m%d")
+        end = dt.datetime.strptime(r["endDate"], self.DATE_FORMAT).strftime("%Y%m%d")
+        return start, end
 
     def get_week_games(self, season: Union[int, str], week: Union[int, str]):
         """
@@ -205,21 +225,26 @@ class NFLClient:
         
         return teams_list
 
-    @staticmethod
-    def _get_home_away(response: dict) -> dict:
-        home_away = {}
-        for team in response:
-            home_away.update({
-                team["homeAway"]: {
-                    "id": team["id"],
-                    "score": team["score"]["value"]
-                }
-            })
-        return home_away
-            
+    def get_odds(self, game_id: Union[int, str]):
 
-    @staticmethod
-    def _convert_datetime_format(
-        str_date: str, from_format: str, to_format: str
-        ):
-        return dt.datetime.strptime(str_date, from_format).strftime(to_format)
+        url = self.API_ESPN_CORE + self.ODDS_ENDPOINT.format(self.CORE_VERSION, game_id, game_id)
+        r = self.session.get(url)
+        odds_makers = r.json()["items"]
+
+        odds_list = []
+        for odds in odds_makers:
+            record = OrderedDict(
+                providerId=odds["provider"]["id"],
+                providerName=odds["provider"]["name"],
+                overUnder=odds.get("overUnder"),
+                overOdds=odds.get("overOdds"),
+                underOdds=odds.get("underOdds"),
+                spread=odds.get("spread"),
+                awayTeamMoneyLine=odds["awayTeamOdds"]["moneyLine"] if odds.get("awayTeamOdds") else None,
+                awayTeamSpreadOdds=odds["awayTeamOdds"]["spreadOdds"] if odds.get("awayTeamOdds") else None,
+                homeTeamMoneyLine=odds["homeTeamOdds"]["moneyLine"] if odds.get("homeTeamOdds") else None,
+                homeTeamSpreadOdds=odds["homeTeamOdds"]["spreadOdds"] if odds.get("homeTeamOdds") else None
+            )
+            odds_list.append(record)
+        
+        return odds_list
